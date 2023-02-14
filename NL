@@ -1,0 +1,114 @@
+import random
+import time
+
+# Specify loss function
+loss_fn = nn.CrossEntropyLoss()
+
+def set_seed(seed_value=42):
+    """Set seed for reproducibility."""
+
+    random.seed(seed_value)
+    np.random.seed(seed_value)
+    torch.manual_seed(seed_value)
+    torch.cuda.manual_seed_all(seed_value)
+
+def train(model, optimizer, train_dataloader, val_dataloader=None, epochs=10):
+    """Train the CNN model."""
+    print("Summary's model: \n")
+    print(model)
+    # Tracking best validation accuracy
+    best_accuracy = 0
+    best_accuracy_train = 0
+
+    # Start training loop
+    print("Start training...\n")
+    print(f"{'Epoch':^7} | {'Train Loss':^12} | {'Train Acc':^12} |  {'Val Loss':^10} | {'Val Acc':^9} | {'Elapsed':^9}")
+    print("-"*80)
+
+    for epoch_i in range(epochs):
+
+        # =======================================
+        #               Training
+        # =======================================
+
+        # Tracking time and loss
+        t0_epoch = time.time()
+        total_loss = 0
+
+        model.train()
+
+        for step, batch in enumerate(train_dataloader):
+            # Load batch to GPU
+            b_input_ids, b_labels = tuple(t.to(device) for t in batch)
+            model.zero_grad()
+
+            logits= model(b_input_ids)
+
+            # Compute loss and accumulate the loss values
+            loss = loss_fn(logits, b_labels)
+            total_loss += loss.item()
+
+            loss.backward()
+
+            optimizer.step()
+
+        # Calculate the average loss over the entire training data
+        avg_train_loss = total_loss / len(train_dataloader)
+        preds = torch.argmax(logits, dim=1).flatten()
+        train_accuracy = (preds == b_labels).cpu().numpy().mean() * 100
+        if train_accuracy > best_accuracy_train:
+                best_accuracy_train = train_accuracy
+        # =======================================
+        #               Evaluation
+        # =======================================
+
+
+
+        if val_dataloader is not None:
+            # After the completion of each training epoch, measure the model's
+            # performance on our validation set.
+
+            val_loss, val_accuracy = evaluate(model, val_dataloader)
+
+            if val_accuracy > best_accuracy:
+                best_accuracy = val_accuracy
+
+            time_elapsed = time.time() - t0_epoch
+            print(f"{epoch_i + 1:^7} | {avg_train_loss:^12.6f} | {train_accuracy:^12.6f} | {val_loss:^10.6f} | {val_accuracy:^9.2f} | {time_elapsed:^9.2f}")
+
+    print("\n")
+    print(f"Training complete! Best accuracy test: {best_accuracy:.2f}%.")
+    print(f"Training complete! Best accuracy train: {best_accuracy_train:.2f}%.")
+
+def evaluate(model, val_dataloader):
+
+    model.eval()
+
+    # Tracking variables
+    val_accuracy = []
+    val_loss = []
+    # For each batch in our validation set...
+    for batch in val_dataloader:
+        # Load batch to GPU
+        b_input_ids, b_labels = tuple(t.to(device) for t in batch)
+
+        # Compute logits
+        with torch.no_grad():
+            logits = model(b_input_ids)
+
+        # Compute loss
+        loss = loss_fn(logits, b_labels)
+        val_loss.append(loss.item())
+
+        # Get the predictions
+        preds = torch.argmax(logits, dim=1).flatten()
+
+        # Calculate the accuracy rate
+        accuracy = (preds == b_labels).cpu().numpy().mean() * 100
+        val_accuracy.append(accuracy)
+
+    # Compute the average accuracy and loss over the validation set.
+    val_loss = np.mean(val_loss)
+    val_accuracy = np.mean(val_accuracy)
+
+    return val_loss, val_accuracy
